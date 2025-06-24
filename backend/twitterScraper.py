@@ -17,51 +17,21 @@ url = "https://trends24.in/united-states/"
 
 # playwright webscraping
 async def twitterData(tag):
-    query = tag.replace(" ", "%20")
-    url = f"https://twitter.com/search?q={query}&src=typed_query&f=live"
+    url = f"https://twitter.com/search?q={tag}&src=trend_click&f=top"
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
         context = await browser.new_context()
-        # close any popup
-        context.on("page", lambda popup: asyncio.create_task(popup.close()))
 
         page = await context.new_page()
-        await page.goto("https://twitter.com/login")
-        await page.fill('input[name="text"]', EMAIL)
-        # await page.press('input[name="text"]', 'Enter')
-
-
-        # try to find buttongs
-        # buttons = await page.locator('div[role="button"]').all()
-        # for i, btn in enumerate(buttons):
-        #     text = await btn.inner_text()
-        #     print(f"{i}: {text}")
-
-        await page.locator('div[role="button"]:has-text("Next")').wait_for(state='visible')
-        print("visible")
-        await page.locator('div[role="button"]:has-text("Next")').click()
-
-        await page.fill('input[name="password"]', PASSWORD)
-        await page.click('div[data-testid="LoginForm_Login_Button"]')
-
-        await page.wait_for_load_state("networkidle")
-
-        # first 10 tweens
         await page.goto(url)
+        await page.wait_for_timeout(5000)
 
-        await page.wait_for_selector("article")
-
-        tweets = await page.locator("article").all()
-        for i, tweet in enumerate(tweets[:10], 1):
-            try:
-                content = await tweet.inner_text()
-                print(f"{i}. {content[:200]}")
-            except Exception as e:
-                print(f"{i}. Error: {e}")
-        
+        tweet_elements = await page.locator('article').all_inner_texts()
         await browser.close()
+
     # return tweets
+    return tweet_elements[:5]
 
 
 
