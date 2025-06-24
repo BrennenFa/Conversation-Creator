@@ -44,26 +44,8 @@ allTweets = []
 # for testing purposes
 tweetDict = {}
 
-# test
-# twitterHeaders = {
-#     "Authorization": f"Bearer {bearer_token}"
-# }
-# url = "https://api.twitter.com/2/tweets/search/recent"
-# params = {
-#     "query": "from:twitterdev"
-# }
-# response = requests.get(url, headers=twitterHeaders, params=params)
 
-# # Check the response
-# print(response.status_code)
-# if response.status_code == 200:
-#     print(response.json())
-# else:
-#     print(f"Request failed: {response.status_code}")
-#     print(response.text)
-
-
-for i, tag in enumerate(trendingTags[:10], 1):
+for i, tag in enumerate(trendingTags[:5], 1):
     tagTweets = []
     if tag[0] == '$' or tag[0] == '#':
         tag = tag[1:]
