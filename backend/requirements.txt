@@ -2,3 +2,6 @@ bs4
 snscrape
 playwright
 requests
+praw
+pytrends
+qdrant_client

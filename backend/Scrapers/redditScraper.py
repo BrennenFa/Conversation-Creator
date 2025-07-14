@@ -12,6 +12,7 @@ load_dotenv()
 REDDIT_ID=os.getenv("REDDIT_ID")
 REDDIT_SECRET=os.getenv("REDDIT_SECRET")
 REDDIT_USERNAME=os.getenv("REDDIT_USERNAME")
+DB_DIR = Path(os.getenv("DB_DIR")).resolve().as_posix()
 
 
 # STEP 1 -- ACCESS RELEVANT TRENDS
@@ -23,7 +24,6 @@ trendingTopics = data["top_trends"]
 # STEP 2 - generate the embeddings model and vector db
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-DB_DIR = Path("").resolve().as_posix()
 
 os.makedirs(DB_DIR, exist_ok=True)
 
