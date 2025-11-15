@@ -1,39 +1,51 @@
 from sentence_transformers import SentenceTransformer
 import os
-from qdrant_client import QdrantClient
-import openai
+import chromadb
 from dotenv import load_dotenv
-from huggingface_hub import InferenceClient
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
-
+import google.generativeai as genai
+from datetime import datetime, timedelta
 
 load_dotenv()
+print("yes its running")
 
-HUGGING_FACE=os.getenv("HUGGING_FACE")
+# Configure Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
-qClient = QdrantClient(path=os.getenv("DB_DIR"))
 
+client = chromadb.PersistentClient(path="./chroma_db")
+
+# Get or create collection
+collection = client.get_or_create_collection(
+    name="reddit_topics",
+    metadata={"hnsw:space": "cosine"}
+)
+
+# Create query and encode it
 query = "Generate Conversation Topics"
 vector = model.encode(query).tolist()
 
-results = qClient.search(
-    collection_name="reddit_topics",
-    query_vector=vector,
-    limit=10,
-    with_payload=True
+print("Starting Query")
+
+# 30 days previous
+cutoffDate = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+
+
+# Query Chroma
+results = collection.query(
+    query_embeddings=[vector],
+    n_results=10,
+    where={"date": {"$gte": cutoffDate}}
 )
 
-
-context = "\n\n".join(hit.payload["text"] for hit in results)
-
-
+# Extract text from results
+context = "\n\n".join(results['documents'][0])
 
 
 
-# Step 3: Use LLM to generate an answer
+
+# Step 3: Use Gemini to generate conversation topics
 prompt = f"""You are an expert summarizer. Use the information below to answer the user's question.
 
 Context:
@@ -42,14 +54,10 @@ Context:
 Question:
 {query}
 
-# Answer:"""
+Answer:"""
 
-
-model_name = "MiniMaxAI/SynLogic-Mix-3-32B"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
-
-inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-outputs = model.generate(**inputs, max_new_tokens=20)
-print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+# Initialize Gemini model and generate response
+gemini_model = genai.GenerativeModel('gemini-2.0-flash-lite')
+response = gemini_model.generate_content(prompt)
+print(response.text)
 

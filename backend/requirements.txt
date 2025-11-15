@@ -5,3 +5,7 @@ requests
 praw
 pytrends
 qdrant_client
+sentence_transformers
+google-generativeai
+python-dotenv
+chromadb
