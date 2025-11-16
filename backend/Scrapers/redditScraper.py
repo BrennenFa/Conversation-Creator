@@ -6,6 +6,8 @@ import chromadb
 from datetime import datetime
 import uuid
 
+# Currently inactive
+# whoops
 
 load_dotenv()
 REDDIT_ID=os.getenv("REDDIT_ID")
@@ -73,7 +75,7 @@ for subbreddit in subreddits:
                 "subreddit": subbreddit,
                 "post_title": post.title,
                 "source": "reddit",
-                "scraped_at": datetime.now().isoformat(),
+                "scraped_at": datetime.now().timestamp(),
                 "number_comments": numComments
             }]
         )

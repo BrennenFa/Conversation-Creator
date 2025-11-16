@@ -49,7 +49,7 @@ for i, tag in enumerate(trendingTags[:NUM_TAGS], 1):
             "topic": clean_tag,
             "original_tag": tag,
             "source": "trends24",
-            "scraped_at": datetime.now().isoformat(),
+            "scraped_at": datetime.now().timestamp(),
             "rank": i
         }]
     )
