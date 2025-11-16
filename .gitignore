@@ -1,2 +1,4 @@
 .env
-backend/db
+venv
+commands.txt
+backend/chroma_db
