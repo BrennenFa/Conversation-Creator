@@ -16,11 +16,9 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 
 client = chromadb.PersistentClient(path="./chroma_db")
 
-# Get or create collection
-collection = client.get_or_create_collection(
-    name="reddit_topics",
-    metadata={"hnsw:space": "cosine"}
-)
+# Get list of all collections
+all_collections = client.list_collections()
+print(f"Available collections: {[col.name for col in all_collections]}")
 
 # Create query and encode it
 query = "Generate Conversation Topics"
@@ -28,25 +26,36 @@ vector = model.encode(query).tolist()
 
 print("Starting Query")
 
-# 30 days previous
-cutoffDate = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+cutoffDate = (datetime.now() - timedelta(days=30)).isoformat()
 
+all_documents = []
+for collection in all_collections:
+    # Get count to know how many to request
+    count = collection.count()
+    print(f"Querying {collection.name} ({count} total documents)...")
 
-# Query Chroma
-results = collection.query(
-    query_embeddings=[vector],
-    n_results=10,
-    where={"date": {"$gte": cutoffDate}}
-)
+    # Request all documents (or max of 100 for performance)
+    n = min(count, 100)
+
+    # Query without date filter for now since scraped_at is a string
+    results = collection.query(
+        query_embeddings=[vector],
+        n_results=n
+    )
+
+    if results['documents'][0]:
+        all_documents.extend(results['documents'][0])
 
 # Extract text from results
-context = "\n\n".join(results['documents'][0])
+context = "\n\n".join(all_documents)
+print(f"\nTotal documents retrieved: {len(all_documents)}")
 
 
 
 
 # Step 3: Use Gemini to generate conversation topics
-prompt = f"""You are an expert summarizer. Use the information below to answer the user's question.
+prompt = f"""You are a professor who just had a massive scandal but you are innocent. You need to talk to the judge of the court
+case to get out. List out some conversation topics to get you guys talking
 
 Context:
 {context}

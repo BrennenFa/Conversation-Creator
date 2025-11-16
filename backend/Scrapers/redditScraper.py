@@ -1,90 +1,86 @@
 import praw
 import os
 from dotenv import load_dotenv
-import json
 from sentence_transformers import SentenceTransformer
-from pathlib import Path
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+import chromadb
+from datetime import datetime
+import uuid
 
 
 load_dotenv()
 REDDIT_ID=os.getenv("REDDIT_ID")
 REDDIT_SECRET=os.getenv("REDDIT_SECRET")
 REDDIT_USERNAME=os.getenv("REDDIT_USERNAME")
-DB_DIR = Path(os.getenv("DB_DIR")).resolve().as_posix()
 
 
-# STEP 1 -- ACCESS RELEVANT TRENDS
-with open('../Trends/trends.json', 'r') as file:
-    data = json.load(file)
-trendingTopics = data["top_trends"]
-
-
-# STEP 2 - generate the embeddings model and vector db
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
-
-os.makedirs(DB_DIR, exist_ok=True)
-
-qdrant = QdrantClient(
-    path=str(DB_DIR)
-)
-collection_name = "reddit_topics"
-
-# create collection if it doesn't exist
-if collection_name not in [c.name for c in qdrant.get_collections().collections]:
-    qdrant.recreate_collection(
-        collection_name=collection_name,
-        vectors_config=VectorParams(size=384, distance=Distance.COSINE),
-    )
-
-
-# STEP 2 -- find elements related
+# init reddit api
 reddit = praw.Reddit(
-    client_id=f'{REDDIT_ID}',
-    client_secret=f'{REDDIT_SECRET}',
+    client_id=REDDIT_ID,
+    client_secret=REDDIT_SECRET,
     user_agent=f'trending_search_app by /u/{REDDIT_USERNAME}'
 )
 
 
+# List of subreddits to check
+subreddits = [
+    "news",
+    "worldnews",
+    "technology",
+    "science",
+    "politics",
+    "sports",
+]
+
+# Initialize sentence model and Chroma
+model = SentenceTransformer("all-MiniLM-L6-v2")
+client = chromadb.PersistentClient(path="../chroma_db")
+collection = client.get_or_create_collection(
+    name="reddit",
+    metadata={"hnsw:space": "cosine"}
+)
 
 
-# Search across all subreddits
-for idx, topic in enumerate(trendingTopics):
-    posts = reddit.subreddit("all").search(topic, sort="relevance", time_filter="day", limit=10)
-    text = f"Topic: {topic}\n\n"
-    postMetadata = []
-    for post in posts:
-        text += f"Title: {post.title}\n{post.selftext}\n"
-        for comment in post.comments[:10]:
-            text += f"- {comment.body}\n"
-        text += "\n"
-        postMetadata.append({
-            "title": post.title,
-            "selftext": post.selftext,
-            "comments": comment.body
-        })
+# iteratae through each subreddit
+for subbreddit in subreddits:
+    print(f"r/{subbreddit}")
+    subreddit = reddit.subreddit(subbreddit)
 
-    embedding = model.encode(text)
+    # first 5 hot posts
+    for post in subreddit.hot(limit=5):
+        text = f"Subreddit: r/{subbreddit}\n"
+        text += f"Title: {post.title}\n"
+        text += f"Content: {post.selftext}\n\n"
+        text += "Comments:\n"
 
-    qdrant.upsert(
-        collection_name=collection_name,
-        points=[
-            PointStruct(
-                id=idx,  # You can also use UUIDs
-                vector=embedding,
-                payload={
-                    "topic": topic,
-                    "text": text,
-                    "metadata": postMetadata
-                }
-            )
-        ]
-    )
-    print(f"Inserted topic: {topic}")
+        # first 5 comments
+        numComments = 0
+        for comment in post.comments[:5]:
+            try:
+                if hasattr(comment, 'body'):
+                    text += f"- {comment.body}\n"
+                    numComments += 1
+            except:
+                pass
 
+        # Create embedding and store
+        embedding = model.encode(text).tolist()
 
-    
+        collection.add(
+            documents=[text],
+            embeddings=[embedding],
+            ids=[str(uuid.uuid4())],
+            metadatas=[{
+                "subreddit": subbreddit,
+                "post_title": post.title,
+                "source": "reddit",
+                "scraped_at": datetime.now().isoformat(),
+                "number_comments": numComments
+            }]
+        )
+
+    print()
+
+print(f"Items in collection: {collection.count()}")
+
 
 

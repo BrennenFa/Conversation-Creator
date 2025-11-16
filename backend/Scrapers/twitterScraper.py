@@ -5,20 +5,17 @@ import os
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 import chromadb
-from chromadb.config import Settings
-# use if i need to use webscraping
-# import asyncio
-# from playwright.async_api import async_playwright
+from datetime import datetime
+import uuid
 
 # load env variables
 load_dotenv()
 bearer_token = os.getenv("BEARER_TOKEN")
-client = tweepy.Client(bearer_token=bearer_token, wait_on_rate_limit=True)
+twitter_client = tweepy.Client(bearer_token=bearer_token, wait_on_rate_limit=True)
 
 
 
-# find website with top tweets 
-
+# top tweets 
 url = "https://trends24.in/united-states/"
 headers = {
     "User-Agent": "Mozilla/5.0"
@@ -33,43 +30,58 @@ tagsWeb = soup.find_all("a", class_="trend-link")
 for topics in tagsWeb:
         tag = topics.get_text(strip=True)
         trendingTags.append(tag)
+        if len(trendingTags) >= 20:
+            break
+
+print(trendingTags)
 
 
 
-
-# Find corresponding tweets
-print("Top Twitter Trends (Global):\n")
-
-allTweets = []
-# for testing purposes
-tweetDict = {}
-
-
-for i, tag in enumerate(trendingTags[:5], 1):
-    tagTweets = []
-    if tag[0] == '$' or tag[0] == '#':
-        tag = tag[1:]
-    print(f"{i}. {tag}")
-    query = f"{tag} lang:en"
-    response = client.search_recent_tweets(query=query, max_results=10)
-
-    for i, tweet in enumerate(response.data, 1):
-        print(f"{i}. {tweet.text}")
-        tagTweets.append(tweet.text)
-        allTweets.append(tweet.text)
-
-    tweetDict[tag] = tagTweets
-
-
-# upload to a vectgor databse
+# init chromadb
 model = SentenceTransformer("all-MiniLM-L6-v2")
-embeddings = model.encode(allTweets)
+chroma_client = chromadb.PersistentClient(path="../chroma_db")
+collection = chroma_client.get_or_create_collection(
+    name="twitter",
+    metadata={"hnsw:space": "cosine"}
+)
 
-client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet",
-                                    persist_directory="db/"
-                                ))
-collection = client.create_or_get_collection(name="content")
+# N topics × M tweets = (n * m) tweets/day
+# (50 tweet/day limit) w/ free tier
+NUM_TOPICS = 1
+# minimum allowed by Twitter API
+TWEETS_PER_TOPIC = 10
 
-for i, text in enumerate(allTweets):
-    collection.add(documents=[text], embeddings=[embeddings[i]], ids=[f"tweet_{i}"])
+# iterate throgh trending tags
+for i, tag in enumerate(trendingTags[:NUM_TOPICS], 1):
+    clean_tag = tag[1:] if tag[0] in ['$', '#'] else tag
+    print(f"{i}. {clean_tag}")
 
+    query = f"{clean_tag} lang:en"
+    response = twitter_client.search_recent_tweets(query=query, max_results=TWEETS_PER_TOPIC)
+
+    if response.data:
+        # combine all tweets for tag
+        tweetText = f"Topic: {clean_tag}\n\n"
+        tweetText += "\n".join([f"- {tweet.text}" for tweet in response.data])
+
+        # Generate embedding
+        embedding = model.encode(tweetText).tolist()
+
+        # add to chroma
+        collection.add(
+            documents=[tweetText],
+            embeddings=[embedding],
+            ids=[str(uuid.uuid4())],
+            metadatas=[{
+                "topic": clean_tag,
+                "source": "twitter",
+                "scraped_at": datetime.now().isoformat(),
+                "tweet_count": len(response.data)
+            }]
+        )
+        print(f"Inserted {len(response.data)} tweets for: {clean_tag}")
+    else:
+        print(f"No tweets found for: {clean_tag}")
+
+print(f"\nTwitter scraping complete")
+print(f"Collection size: {collection.count()}")
